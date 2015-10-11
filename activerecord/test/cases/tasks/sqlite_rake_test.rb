@@ -6,54 +6,86 @@ module ActiveRecord
   class SqliteDBCreateTest < ActiveRecord::TestCase
     def setup
       @database      = 'db_create.sqlite3'
-      @connection    = stub :connection
+      @connection    = Minitest::Mock.new
       @configuration = {
         'adapter'  => 'sqlite3',
-        'database' => @database
+        'database' => @database,
+        'file_system_interactor' => File,
+        'database_interactor' => ActiveRecord::Base
       }
+    end
 
-      File.stubs(:exist?).returns(false)
-      ActiveRecord::Base.stubs(:connection).returns(@connection)
-      ActiveRecord::Base.stubs(:establish_connection).returns(true)
+    def with_fake_connection
+      @configuration['database_interactor'].stub(:connection, @connection) do
+        @configuration['database_interactor'].stub(:establish_connection, true) do
+          yield
+        end
+      end
     end
 
     def test_db_checks_database_exists
-      File.expects(:exist?).with(@database).returns(false)
+      with_fake_connection do
+        file_system = Minitest::Mock.new
+        @configuration['file_system_interactor'] = file_system
+        file_system.expect(:exist?, false, [@database])
 
-      ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+        ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+
+        file_system.verify
+      end
     end
 
     def test_db_create_when_file_exists
-      File.stubs(:exist?).returns(true)
+      with_fake_connection do
+        @configuration['file_system_interactor'] = File
 
-      $stderr.expects(:puts).with("#{@database} already exists")
-
-      ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+        File.stub(:exist?, true) do
+          assert_output nil, "#{@database} already exists\n" do
+            ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+          end
+        end
+      end
     end
 
     def test_db_create_with_file_does_nothing
-      File.stubs(:exist?).returns(true)
-      $stderr.stubs(:puts).returns(nil)
+      @configuration['file_system_interactor'] = File
+      database = Minitest::Mock.new
+      @configuration['database_interactor'] = database
 
-      ActiveRecord::Base.expects(:establish_connection).never
+      # TODO: Implement this in minitest
+      # ActiveRecord::Base.expects(:establish_connection).never
+      database.expect(:establish_connection, times: 0)
 
-      ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+      File.stub(:exist?, true) do
+        assert_output nil, nil do
+          ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+        end
+      end
+
+      database.verify
     end
 
     def test_db_create_establishes_a_connection
-      ActiveRecord::Base.expects(:establish_connection).with(@configuration)
+      database = Minitest::Mock.new
+      @configuration['file_system_interactor'] = File
+      @configuration['database_interactor'] = database
+      database.expect(:establish_connection, nil, [@configuration])
+      database.expect(:connection, nil)
 
-      ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+      File.stub(:exist?, false) do
+        ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+      end
+
+      database.verify
     end
 
     def test_db_create_with_error_prints_message
-      ActiveRecord::Base.stubs(:establish_connection).raises(Exception)
-
-      $stderr.stubs(:puts).returns(true)
-      $stderr.expects(:puts).
-        with("Couldn't create database for #{@configuration.inspect}")
-
-      ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+      @configuration['database_interactor'] = ActiveRecord::Base
+      ActiveRecord::Base.stub(:establish_connection, lambda { |n| raise Exception }) do
+        assert_output nil, /Couldn't create database for #{@configuration.inspect}/ do
+          ActiveRecord::Tasks::DatabaseTasks.create @configuration, '/rails/root'
+        end
+      end
     end
   end
 

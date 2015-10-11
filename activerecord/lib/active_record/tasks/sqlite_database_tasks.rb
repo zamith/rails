@@ -1,17 +1,15 @@
 module ActiveRecord
   module Tasks # :nodoc:
     class SQLiteDatabaseTasks # :nodoc:
-      delegate :connection, :establish_connection, to: ActiveRecord::Base
-
       def initialize(configuration, root = ActiveRecord::Tasks::DatabaseTasks.root)
         @configuration, @root = configuration, root
       end
 
       def create
-        raise DatabaseAlreadyExists if File.exist?(configuration['database'])
+        raise DatabaseAlreadyExists if configuration['file_system_interactor'].exist?(configuration['database'])
 
-        establish_connection configuration
-        connection
+        configuration['database_interactor'].establish_connection configuration
+        configuration['database_interactor'].connection
       end
 
       def drop
@@ -19,7 +17,7 @@ module ActiveRecord
         path = Pathname.new configuration['database']
         file = path.absolute? ? path.to_s : File.join(root, path)
 
-        FileUtils.rm(file) if File.exist?(file)
+        FileUtils.rm(file) if configuration['file_system_interactor'].exist?(file)
       end
 
       def purge
@@ -28,7 +26,7 @@ module ActiveRecord
       end
 
       def charset
-        connection.encoding
+        connection['database_interactor'].connection.encoding
       end
 
       def structure_dump(filename)

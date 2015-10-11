@@ -84,7 +84,7 @@ module ActiveRecord
         if options.has_key?(:config)
           @current_config = options[:config]
         else
-          @current_config ||= ActiveRecord::Base.configurations[options[:env]]
+          @current_config ||= @configuration['database_interactor'].configurations[options[:env]]
         end
       end
 
@@ -106,7 +106,7 @@ module ActiveRecord
         each_current_configuration(environment) { |configuration|
           create configuration
         }
-        ActiveRecord::Base.establish_connection(environment.to_sym)
+        @configuration['database_interactor'].establish_connection(environment.to_sym)
       end
 
       def drop(*arguments)
@@ -142,7 +142,7 @@ module ActiveRecord
       end
 
       def charset_current(environment = env)
-        charset ActiveRecord::Base.configurations[environment]
+        charset @configuration['database_interactor'].configurations[environment]
       end
 
       def charset(*arguments)
@@ -151,7 +151,7 @@ module ActiveRecord
       end
 
       def collation_current(environment = env)
-        collation ActiveRecord::Base.configurations[environment]
+        collation @configuration['database_interactor'].configurations[environment]
       end
 
       def collation(*arguments)
@@ -173,7 +173,7 @@ module ActiveRecord
         each_current_configuration(environment) { |configuration|
           purge configuration
         }
-        ActiveRecord::Base.establish_connection(environment.to_sym)
+        @configuration['database_interactor'].establish_connection(environment.to_sym)
       end
 
       def structure_dump(*arguments)
@@ -194,7 +194,7 @@ module ActiveRecord
         case format
         when :ruby
           check_schema_file(file)
-          ActiveRecord::Base.establish_connection(configuration)
+          @configuration['database_interactor'].establish_connection(configuration)
           load(file)
         when :sql
           check_schema_file(file)
@@ -225,7 +225,7 @@ module ActiveRecord
         each_current_configuration(environment) { |configuration|
           load_schema configuration, format, file
         }
-        ActiveRecord::Base.establish_connection(environment.to_sym)
+        @configuration['database_interactor'].establish_connection(environment.to_sym)
       end
 
       def check_schema_file(filename)
@@ -261,14 +261,14 @@ module ActiveRecord
         # add test environment only if no RAILS_ENV was specified.
         environments << 'test' if environment == 'development' && ENV['RAILS_ENV'].nil?
 
-        configurations = ActiveRecord::Base.configurations.values_at(*environments)
+        configurations = @configuration["database_interactor"].configurations.values_at(*environments)
         configurations.compact.each do |configuration|
           yield configuration unless configuration['database'].blank?
         end
       end
 
       def each_local_configuration
-        ActiveRecord::Base.configurations.each_value do |configuration|
+        @configuration['database_interactor'].configurations.each_value do |configuration|
           next unless configuration['database']
 
           if local_database?(configuration)
